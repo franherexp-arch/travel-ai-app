@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
 from backend.recomendador import recomendar_destinos
 from backend.auth import router as auth_router
@@ -9,19 +11,19 @@ from backend.uso import obtener_uso, incrementar_uso
 import sqlite3
 import os
 
-# 👉 Ruta DB (IMPORTANTE para Render)
+# 👉 Rutas
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "..", "travel_ai.db")
 
+# 👉 Templates
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
 app = FastAPI(title="Travel AI API")
 
-# 👉 Crear base de datos al iniciar
 crear_base_datos()
-
-# 👉 Rutas de autenticación
 app.include_router(auth_router)
 
-# 👉 CORS (permite frontend externo)
+# 👉 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,13 +32,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 👉 Endpoint base
-@app.get("/")
-def inicio():
-    return {"mensaje": "API de viajes con IA funcionando"}
+# 👉 FRONTEND PRINCIPAL
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
-# 🔥 FUNCIÓN PARA OBTENER PLAN DEL USUARIO
+# 🔥 PLAN
 def obtener_plan(email):
     conexion = sqlite3.connect(DB_PATH)
     cursor = conexion.cursor()
@@ -51,20 +53,17 @@ def obtener_plan(email):
     return "free"
 
 
-# 👉 Endpoint SaaS con control de uso
+# 👉 API
 @app.get("/recomendar")
 def recomendar(presupuesto: int, tipo: str, email: str = "demo@demo.com"):
 
     plan = obtener_plan(email)
 
-    # 👉 Usuario FREE (limitado)
     if plan == "free":
         uso_actual = obtener_uso(email)
 
         if uso_actual >= 3:
-            return {
-                "error": "Has alcanzado el límite FREE (3 consultas). Pásate a PRO 🚀"
-            }
+            return {"error": "Has alcanzado el límite FREE (3 consultas). Pásate a PRO 🚀"}
 
         incrementar_uso(email)
 
@@ -76,7 +75,6 @@ def recomendar(presupuesto: int, tipo: str, email: str = "demo@demo.com"):
             "recomendaciones": resultados
         }
 
-    # 👉 Usuario PRO (sin límites)
     resultados = recomendar_destinos(presupuesto, tipo)
 
     return {
